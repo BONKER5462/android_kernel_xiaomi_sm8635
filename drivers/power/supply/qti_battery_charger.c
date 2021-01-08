@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"BATTERY_CHG: %s: " fmt, __func__
@@ -9,6 +9,7 @@
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/extcon-provider.h>
 #include <linux/firmware.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -140,6 +141,11 @@ enum usb_port_id {
 	USB_1_PORT_ID,
 	USB_2_PORT_ID,
 	NUM_USB_PORTS,
+};
+
+enum usb_connector_type {
+	USB_CONNECTOR_TYPE_TYPEC,
+	USB_CONNECTOR_TYPE_MICRO_USB,
 };
 
 enum psy_type {
@@ -794,6 +800,8 @@ struct battery_chg_dev {
 	struct psy_state		psy_list[PSY_TYPE_MAX];
 	struct dentry			*debugfs_dir;
 	void				*notifier_cookie;
+	/* extcon for VBUS/ID notification for USB for micro USB */
+	struct extcon_dev		*extcon;
 	u32				*thermal_levels;
 	const char			*wls_fw_name;
 	int				curr_thermal_level;
@@ -832,6 +840,8 @@ struct battery_chg_dev {
 	u32				last_fcc_ua;
 	u32				usb_icl_ua[NUM_USB_PORTS];
 	u32				thermal_fcc_step;
+	u32				connector_type;
+	u32				usb_prev_mode;
 	bool				restrict_chg_en;
 	u8				chg_ctrl_start_thr;
 	u8				chg_ctrl_end_thr;
@@ -947,6 +957,7 @@ static const int usb_prop_map[USB_PROP_MAX] = {
 	[USB_INPUT_CURR_LIMIT]	= POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
 	[USB_ADAP_TYPE]		= POWER_SUPPLY_PROP_USB_TYPE,
 	[USB_TEMP]		= POWER_SUPPLY_PROP_TEMP,
+	[USB_SCOPE]		= POWER_SUPPLY_PROP_SCOPE,
 };
 
 static const int wls_prop_map[WLS_PROP_MAX] = {
@@ -960,32 +971,11 @@ static const int wls_prop_map[WLS_PROP_MAX] = {
 	[WLS_BOOST_EN]		= POWER_SUPPLY_PROP_PRESENT,
 };
 
-/*add xm_power_supply text*/
-static const char * const POWER_SUPPLY_VENDOR_TEXT[] = {
-	[POWER_SUPPLY_VENDOR_BYD]		= "BYD",
-	[POWER_SUPPLY_VENDOR_COSLIGHT]	= "COSLIGHT",
-	[POWER_SUPPLY_VENDOR_SUNWODA]	= "SUNWODA",
-	[POWER_SUPPLY_VENDOR_NVT]		= "NVT",
-	[POWER_SUPPLY_VENDOR_SCUD]		= "SCUD",
-	[POWER_SUPPLY_VENDOR_TWS]		= "TWS",
-	[POWER_SUPPLY_VENDOR_DESAY]		= "DESAY",
+static const unsigned int bcdev_usb_extcon_cable[] = {
+	EXTCON_USB,
+	EXTCON_USB_HOST,
+	EXTCON_NONE,
 };
-
-static const char * const POWER_SUPPLY_CELL_VENDOR_TEXT[] = {
-	[POWER_SUPPLY_CELL_VENDOR_SAMSUNG]		= "SAMSUNG",
-	[POWER_SUPPLY_CELL_VENDOR_SONY]			= "SONY",
-	[POWER_SUPPLY_CELL_VENDOR_SANYO]		= "SANYO",
-	[POWER_SUPPLY_CELL_VENDOR_LG]			= "LG",
-	[POWER_SUPPLY_CELL_VENDOR_PANASONIC]	= "PANASONIC",
-	[POWER_SUPPLY_CELL_VENDOR_ATL]			= "ATL",
-	[POWER_SUPPLY_CELL_VENDOR_BYD]			= "BYD",
-	[POWER_SUPPLY_CELL_VENDOR_TWS]			= "TWS",
-	[POWER_SUPPLY_CELL_VENDOR_LISHEN]		= "LISHEN",
-	[POWER_SUPPLY_CELL_VENDOR_COSLIGHT]		= "COSLIGHT",
-	[POWER_SUPPLY_CELL_VENDOR_LWN]			= "LWN",
-};
-
-static const int xm_prop_map[XM_PROP_MAX] = {};
 
 /* Standard usb_type definitions similar to power_supply_sysfs.c */
 static const char * const power_supply_usb_type_text[] = {
@@ -1600,6 +1590,51 @@ static void handle_message(struct battery_chg_dev *bcdev, void *data,
 		complete(&bcdev->ack);
 }
 
+static void battery_chg_update_uusb_type(struct battery_chg_dev *bcdev,
+					 u32 adap_type)
+{
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_USB];
+	int rc;
+	u32 scope;
+
+	/* Handle the extcon notification for uUSB case only */
+	if ((bcdev->connector_type != USB_CONNECTOR_TYPE_MICRO_USB) ||
+	    !bcdev->extcon)
+		return;
+
+	rc = read_property_id(bcdev, pst, USB_SCOPE);
+	if (rc < 0) {
+		dev_err(bcdev->dev, "Failed to read USB_SCOPE rc=%d\n", rc);
+		return;
+	}
+	scope = pst->prop[USB_SCOPE];
+
+	switch (scope) {
+	case POWER_SUPPLY_SCOPE_DEVICE:
+		if (adap_type == POWER_SUPPLY_USB_TYPE_SDP ||
+		    adap_type == POWER_SUPPLY_USB_TYPE_CDP) {
+			/* Device mode connect notification */
+			extcon_set_state_sync(bcdev->extcon, EXTCON_USB, 1);
+			bcdev->usb_prev_mode = EXTCON_USB;
+		}
+		break;
+	case POWER_SUPPLY_SCOPE_SYSTEM:
+		/* Host mode connect notification */
+		extcon_set_state_sync(bcdev->extcon, EXTCON_USB_HOST, 1);
+		bcdev->usb_prev_mode = EXTCON_USB_HOST;
+		break;
+	default:
+		if (bcdev->usb_prev_mode == EXTCON_USB ||
+		    bcdev->usb_prev_mode == EXTCON_USB_HOST) {
+			/* Disconnect notification */
+			extcon_set_state_sync(bcdev->extcon,
+					      bcdev->usb_prev_mode, 0);
+			bcdev->usb_prev_mode = EXTCON_NONE;
+		}
+		break;
+	}
+}
+
 static struct power_supply_desc usb_psy_desc[NUM_USB_PORTS];
 
 static void battery_chg_update_usb_type_work(struct work_struct *work)
@@ -1681,6 +1716,8 @@ static void battery_chg_update_usb_type_work(struct work_struct *work)
 			break;
 		}
 	}
+
+	battery_chg_update_uusb_type(bcdev, pst->prop[USB_ADAP_TYPE]);
 }
 
 static void battery_chg_check_status_work(struct work_struct *work)
@@ -2803,6 +2840,7 @@ static enum power_supply_property usb_props[] = {
 	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
 	POWER_SUPPLY_PROP_USB_TYPE,
 	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_SCOPE,
 };
 
 static enum power_supply_usb_type usb_psy_supported_types[] = {
@@ -10720,189 +10758,55 @@ static const struct thermal_cooling_device_ops battery_tcd_ops = {
 	.set_cur_state = battery_chg_set_cur_charge_cntl_limit,
 };
 
-#define MAX_UEVENT_LENGTH 50
-static int add_xiaomi_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int register_extcon_conn_type(struct battery_chg_dev *bcdev)
 {
-	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
-	struct battery_chg_dev *bcdev = platform_get_drvdata(pdev);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_USB];
+	int rc;
 
-	char *prop_buf = NULL;
-	char uevent_string[MAX_UEVENT_LENGTH+1];
-	u32 i = 0;
+	rc = read_property_id(bcdev, pst, USB_CONNECTOR_TYPE);
+	if (rc < 0) {
+		dev_err(bcdev->dev, "Failed to read prop USB_CONNECTOR_TYPE, rc=%d\n",
+			rc);
+		return rc;
+	}
 
-#if defined(CONFIG_MI_PEN_WIRELESS)
-	int val;
-#endif
-
-	prop_buf = (char *)get_zeroed_page(GFP_KERNEL);
-	if (!prop_buf)
+	if (pst->prop[USB_CONNECTOR_TYPE] != USB_CONNECTOR_TYPE_MICRO_USB)
 		return 0;
 
+	bcdev->connector_type = USB_CONNECTOR_TYPE_MICRO_USB;
+	bcdev->usb_prev_mode = EXTCON_NONE;
 
-#if defined(CONFIG_MI_WIRELESS)
-#ifndef CONFIG_WIRELESS_REVERSE_CLOSE
-	reverse_chg_state_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_REVERSE_CHG_STATE=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	reverse_chg_mode_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_REVERSE_CHG_MODE=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	reverse_quick_charge_show(&(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_REVERSE_QUICK_CHARGE=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-#endif
-
-#if defined(CONFIG_MI_PEN_WIRELESS)
-	reverse_chg_state_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_REVERSE_PEN_CHG_STATE=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	pen_hall3_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_PEN_HALL3=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	pen_hall4_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_PEN_HALL4=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	pen_soc_show( &(bcdev->battery_class), NULL, prop_buf);
-	if (!kstrtoint(prop_buf, 10, &val)) {
-		if (val != 0xff) {
-			snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_REVERSE_PEN_SOC=%d", val);
-			add_uevent_var(env, uevent_string);
-		}
+	bcdev->extcon = devm_extcon_dev_allocate(bcdev->dev,
+						bcdev_usb_extcon_cable);
+	if (IS_ERR(bcdev->extcon)) {
+		rc = PTR_ERR(bcdev->extcon);
+		dev_err(bcdev->dev, "Failed to allocate extcon device rc=%d\n",
+			rc);
+		return rc;
 	}
 
-	pen_mac_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_PEN_MAC=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	pen_place_err_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_PEN_PLACE_ERR=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-#endif
-
-	wls_fw_state_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_WLS_FW_STATE=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	wls_car_adapter_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_WLS_CAR_ADAPTER=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	tx_adapter_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_TX_ADAPTER=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-
-	rx_offset_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_RX_OFFSET=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	low_inductance_offset_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_LOW_INDUCTANCE_OFFSET=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-#endif
-
-	soc_decimal_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_SOC_DECIMAL=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	soc_decimal_rate_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_SOC_DECIMAL_RATE=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	quick_charge_type_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_QUICK_CHARGE_TYPE=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-
-	shutdown_delay_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_SHUTDOWN_DELAY=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-
-	connector_temp_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_CONNECTOR_TEMP=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	moisture_detection_status_show( &(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_MOISTURE_DET_STS=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-
-	cc_short_vbus_show(&(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_CC_SHORT_VBUS=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-#if defined(CONFIG_MI_N2N3ANTIBURN)
-	anti_burn_show(&(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_ANTI_BURN=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-#endif
-
-	ntc_alarm_show(&(bcdev->battery_class), NULL, prop_buf);
-	snprintf(uevent_string, MAX_UEVENT_LENGTH, "POWER_SUPPLY_NTC_ALARM=%s", prop_buf);
-	add_uevent_var(env, uevent_string);
-
-	dev_err(bcdev->dev," %s ", env->envp[env->envp_idx -1]);
-
-
-	dev_err(bcdev->dev,"currnet uevent info :");
-	for(i = 0; i < env->envp_idx; ++i){
-#ifndef CONFIG_MI_PEN_WIRELESS
-		if(i <= 9 || (i >= 12 && i <= 16 && i != 14))
-			continue;
-#endif
-	    dev_err(bcdev->dev," %s ", env->envp[i]);
+	rc = devm_extcon_dev_register(bcdev->dev, bcdev->extcon);
+	if (rc < 0) {
+		dev_err(bcdev->dev, "Failed to register extcon device rc=%d\n",
+			rc);
+		return rc;
 	}
 
-	free_page((unsigned long)prop_buf);
-	return 0;
-}
-
-static struct device_type dev_type_xiaomi_uevent = {
-	.name = "dev_type_xiaomi_uevent",
-	.uevent = add_xiaomi_uevent,
-};
-
-static int charger_notifier_event(struct notifier_block *notifier,
-			unsigned long chg_event, void *val)
-{
-	struct battery_chg_dev *bcdev;
-	struct power_supply	*batt_psy;
-	int rc = 0;
-
-	batt_psy = power_supply_get_by_name("battery");
-	if (!batt_psy) {
-		return -EPROBE_DEFER;
+	rc = extcon_set_property_capability(bcdev->extcon, EXTCON_USB,
+					    EXTCON_PROP_USB_SS);
+	if (rc < 0) {
+		dev_err(bcdev->dev, "Failed to set USB property capability, rc=%d\n",
+			rc);
+		return rc;
 	}
 
-	bcdev = power_supply_get_drvdata(batt_psy);
-	if (!bcdev)
-		return -ENODEV;
+	rc = extcon_set_property_capability(bcdev->extcon,
+					    EXTCON_USB_HOST, EXTCON_PROP_USB_SS);
+	if (rc < 0)
+		dev_err(bcdev->dev, "Failed to set USB_HOST property capability, rc=%d\n",
+			rc);
 
-	switch (chg_event) {
-	case THERMAL_BOARD_TEMP:
-		bcdev->thermal_board_temp = *(int *)val;
-		rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_XM], XM_PROP_THERMAL_BOARD_TEMP, bcdev->thermal_board_temp);
-		if (rc < 0)
-			return rc;
-		break;
-	case THERMAL_SCENE:
-		bcdev->thermal_scene = *(int *)val;
-		xm_handle_smartchg_scene_upload(bcdev, bcdev->thermal_scene);
-		rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_XM], XM_PROP_THERMAL_SCENE, bcdev->thermal_scene);
-		if (rc < 0)
-			return rc;
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_DONE;
+	return rc;
 }
 
 static int battery_chg_probe(struct platform_device *pdev)
@@ -11063,6 +10967,17 @@ static int battery_chg_probe(struct platform_device *pdev)
 	bcdev->notify_en = false;
 	battery_chg_notify_enable(bcdev);
 	device_init_wakeup(bcdev->dev, true);
+	rc = register_extcon_conn_type(bcdev);
+	if (rc < 0) {
+		if (bcdev->connector_type == USB_CONNECTOR_TYPE_MICRO_USB) {
+			dev_err(dev, "Failed to register extcon for micro USB, rc=%d\n",
+				rc);
+			goto error;
+		} else {
+			dev_warn(dev, "Failed to register extcon rc=%d\n", rc);
+		}
+	}
+
 	schedule_work(&bcdev->usb_type_work);
 
 	schedule_delayed_work(&bcdev->charger_debug_info_print_work, 5 * HZ);
