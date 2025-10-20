@@ -526,6 +526,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_do_read_fault);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_filemap_read);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_filemap_map_pages);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_remove_mapping);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_adjust_nr_reclaimed);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_remove_mapping_failed);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_mmc_blk_reset);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_mmc_attach_sd);

@@ -410,8 +410,6 @@ DECLARE_HOOK(android_vh_pcp_alloc_factor_adjust,
 DECLARE_RESTRICTED_HOOK(android_rvh_read_swap_cache_async_timeout,
 	TP_PROTO(size_t *count, bool *skip),
 	TP_ARGS(count, skip), 2);
-<<<<<<< HEAD
-=======
 DECLARE_HOOK(android_vh_folio_add_lru_folio_activate,
 	TP_PROTO(struct folio *folio, bool *bypass),
 	TP_ARGS(folio, bypass));
@@ -463,7 +461,9 @@ DECLARE_HOOK(android_vh_swap_device_swapon,
 DECLARE_HOOK(android_vh_swap_device_swapoff,
 	TP_PROTO(struct swap_info_struct *si),
 	TP_ARGS(si));
->>>>>>> 6d2f43b7269a (ANDROID: vendor hooks: add hooks to support the functionality and management of multiple swap devices.)
+DECLARE_HOOK(android_vh_adjust_nr_reclaimed,
+	TP_PROTO(struct folio *folio, unsigned int *nr_reclaimed),
+	TP_ARGS(folio, nr_reclaimed));
 #endif /* _TRACE_HOOK_MM_H */
 
 /* This part must be outside protection */
