@@ -2309,6 +2309,7 @@ static int f2fs_enable_checkpoint(struct f2fs_sb_info *sbi)
 	long long start, writeback, end;
 	int ret;
 	long long skipped_write, dirty_data;
+	struct f2fs_lock_context lc;
 
 	f2fs_info(sbi, "f2fs_enable_checkpoint() starts, meta: %lld, node: %lld, data: %lld",
 					get_pages(sbi, F2FS_DIRTY_META),

@@ -148,6 +148,7 @@ enum f2fs_lock_name {
 	LOCK_NAME_CP_RWSEM,
 	LOCK_NAME_NODE_CHANGE,
 	LOCK_NAME_NODE_WRITE,
+	LOCK_NAME_GC_LOCK,
 };
 
 /*
@@ -1325,10 +1326,7 @@ struct f2fs_time_stat {
 
 struct f2fs_lock_context {
 	struct f2fs_time_stat ts;
-	int orig_nice;
-	int new_nice;
 	bool lock_trace;
-	bool need_restore;
 };
 
 struct f2fs_gc_control {
@@ -1340,24 +1338,6 @@ struct f2fs_gc_control {
 	bool one_time;			/* require one time GC in one migration unit */
 	unsigned int nr_free_secs;	/* # of free sections to do GC */
 	struct f2fs_lock_context lc;	/* lock context for gc_lock */
-};
-
-struct f2fs_time_stat {
-	unsigned long long total_time;		/* total wall clock time */
-#ifdef CONFIG_64BIT
-	unsigned long long running_time;	/* running time */
-#endif
-#if defined(CONFIG_SCHED_INFO) && defined(CONFIG_SCHEDSTATS)
-	unsigned long long runnable_time;	/* runnable(including preempted) time */
-#endif
-#ifdef CONFIG_TASK_DELAY_ACCT
-	unsigned long long io_sleep_time;	/* IO sleep time */
-#endif
-};
-
-struct f2fs_lock_context {
-	struct f2fs_time_stat ts;
-	bool lock_trace;
 };
 
 /*
