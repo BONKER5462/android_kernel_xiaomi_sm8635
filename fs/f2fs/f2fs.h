@@ -1839,15 +1839,6 @@ struct f2fs_sb_info {
 	/* max elapsed time threshold in critical region that lock covered */
 	unsigned long long max_lock_elapsed_time;
 
-	/* enable/disable to adjust task priority in critical region covered by lock */
-	unsigned int adjust_lock_priority;
-
-	/* adjust priority for task which is in critical region covered by lock */
-	unsigned int lock_duration_priority;
-
-	/* priority for critical task, e.g. f2fs_ckpt, f2fs_gc threads */
-	long critical_task_priority;
-
 #ifdef CONFIG_F2FS_FS_COMPRESSION
 	struct kmem_cache *page_array_slab;	/* page array entry */
 	unsigned int page_array_slab_size;	/* default page array slab size */

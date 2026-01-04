@@ -1096,9 +1096,6 @@ F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, warm_data_age_threshold, warm_data_age_thre
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, last_age_weight, last_age_weight);
 
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, max_lock_elapsed_time, max_lock_elapsed_time);
-F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, lock_duration_priority, lock_duration_priority);
-F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, adjust_lock_priority, adjust_lock_priority);
-F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, critical_task_priority, critical_task_priority);
 
 #define ATTR_LIST(name) (&f2fs_attr_##name.attr)
 static struct attribute *f2fs_attrs[] = {
@@ -1204,9 +1201,6 @@ static struct attribute *f2fs_attrs[] = {
 	ATTR_LIST(warm_data_age_threshold),
 	ATTR_LIST(last_age_weight),
 	ATTR_LIST(max_lock_elapsed_time),
-	ATTR_LIST(lock_duration_priority),
-	ATTR_LIST(adjust_lock_priority),
-	ATTR_LIST(critical_task_priority),
 	NULL,
 };
 ATTRIBUTE_GROUPS(f2fs);
