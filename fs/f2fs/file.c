@@ -1824,6 +1824,9 @@ static int f2fs_expand_inode_data(struct inode *inode, loff_t offset,
 		struct f2fs_lock_context lc;
 
 		block_t sec_blks = CAP_BLKS_PER_SEC(sbi);
+		block_t sec_len = roundup(map.m_len, sec_blks);
+
+		block_t sec_blks = CAP_BLKS_PER_SEC(sbi);
 		block_t sec_len;
 
 		if (map.m_lblk % sec_blks) {

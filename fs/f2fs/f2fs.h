@@ -145,6 +145,7 @@ typedef u32 nid_t;
 
 enum f2fs_lock_name {
 	LOCK_NAME_NONE,
+	LOCK_NAME_CP_RWSEM,
 };
 
 /*
@@ -2252,33 +2253,6 @@ void f2fs_down_write_trace(struct f2fs_rwsem *sem,
 int f2fs_down_write_trylock_trace(struct f2fs_rwsem *sem,
 						struct f2fs_lock_context *lc);
 void f2fs_up_write_trace(struct f2fs_rwsem *sem, struct f2fs_lock_context *lc);
-
-static inline void f2fs_lock_op(struct f2fs_sb_info *sbi)
-{
-	f2fs_down_read(&sbi->cp_rwsem);
-}
-
-static inline int f2fs_trylock_op(struct f2fs_sb_info *sbi)
-{
-	if (time_to_inject(sbi, FAULT_LOCK_OP))
-		return 0;
-	return f2fs_down_read_trylock(&sbi->cp_rwsem);
-}
-
-static inline void f2fs_unlock_op(struct f2fs_sb_info *sbi)
-{
-	f2fs_up_read(&sbi->cp_rwsem);
-}
-
-static inline void f2fs_lock_all(struct f2fs_sb_info *sbi)
-{
-	f2fs_down_write(&sbi->cp_rwsem);
-}
-
-static inline void f2fs_unlock_all(struct f2fs_sb_info *sbi)
-{
-	f2fs_up_write(&sbi->cp_rwsem);
-}
 
 static inline int __get_cp_reason(struct f2fs_sb_info *sbi)
 {

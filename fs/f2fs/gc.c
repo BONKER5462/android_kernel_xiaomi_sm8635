@@ -2153,8 +2153,6 @@ int f2fs_resize_fs(struct file *filp, __u64 block_count)
 	__u64 old_block_count, shrunk_blocks;
 	struct cp_control cpc = { CP_RESIZE, 0, 0, 0 };
 	struct f2fs_lock_context lc;
-	struct f2fs_lock_context glc;
-	struct f2fs_lock_context clc;
 	unsigned int secs;
 	int err = 0;
 	__u32 rem;
@@ -2220,7 +2218,7 @@ int f2fs_resize_fs(struct file *filp, __u64 block_count)
 
 out_unlock:
 	f2fs_unlock_op(sbi, &lc);
-	f2fs_up_write_trace(&sbi->gc_lock, &glc);
+	f2fs_up_write(&sbi->gc_lock);
 out_drop_write:
 	mnt_drop_write_file(filp);
 	if (err)
