@@ -164,12 +164,7 @@ TRACE_DEFINE_ENUM(EX_BLOCK_AGE);
 
 #define show_lock_name(lock)						\
 	__print_symbolic(lock,						\
-		{ LOCK_NAME_CP_RWSEM,		"cp_rwsem" },		\
-		{ LOCK_NAME_NODE_CHANGE,	"node_change" },	\
-		{ LOCK_NAME_NODE_WRITE,		"node_write" },		\
-		{ LOCK_NAME_GC_LOCK,		"gc_lock" },		\
-		{ LOCK_NAME_CP_GLOBAL,		"cp_global" },		\
-		{ LOCK_NAME_IO_RWSEM,		"io_rwsem" })
+		{ LOCK_NAME_NONE,		"none" })
 
 struct f2fs_sb_info;
 struct f2fs_io_info;
@@ -2359,91 +2354,6 @@ TRACE_EVENT(f2fs_lock_elapsed_time,
 		__entry->runnable_time,
 		__entry->io_sleep_time,
 		__entry->other_time)
-);
-
-DECLARE_EVENT_CLASS(f2fs_priority_update,
-
-	TP_PROTO(struct f2fs_sb_info *sbi, enum f2fs_lock_name lock_name,
-		bool is_write, struct task_struct *p, int orig_prio,
-		int new_prio),
-
-	TP_ARGS(sbi, lock_name, is_write, p, orig_prio, new_prio),
-
-	TP_STRUCT__entry(
-		__field(dev_t, dev)
-		__array(char, comm, TASK_COMM_LEN)
-		__field(pid_t, pid)
-		__field(unsigned int, lock_name)
-		__field(bool, is_write)
-		__field(int, orig_prio)
-		__field(int, new_prio)
-	),
-
-	TP_fast_assign(
-		__entry->dev		= sbi->sb->s_dev;
-		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
-		__entry->pid		= p->pid;
-		__entry->lock_name	= lock_name;
-		__entry->is_write	= is_write;
-		__entry->orig_prio	= orig_prio;
-		__entry->new_prio	= new_prio;
-	),
-
-	TP_printk("dev = (%d,%d), comm: %s, pid: %d, lock_name: %s, "
-		"lock_type: %s, orig_prio: %d, new_prio: %d",
-		show_dev(__entry->dev),
-		__entry->comm,
-		__entry->pid,
-		show_lock_name(__entry->lock_name),
-		__entry->is_write ? "wlock" : "rlock",
-		__entry->orig_prio,
-		__entry->new_prio)
-);
-
-DEFINE_EVENT(f2fs_priority_update, f2fs_priority_uplift,
-
-	TP_PROTO(struct f2fs_sb_info *sbi, enum f2fs_lock_name lock_name,
-		bool is_write, struct task_struct *p, int orig_prio,
-		int new_prio),
-
-	TP_ARGS(sbi, lock_name, is_write, p, orig_prio, new_prio)
-);
-
-DEFINE_EVENT(f2fs_priority_update, f2fs_priority_restore,
-
-	TP_PROTO(struct f2fs_sb_info *sbi, enum f2fs_lock_name lock_name,
-		bool is_write, struct task_struct *p, int orig_prio,
-		int new_prio),
-
-	TP_ARGS(sbi, lock_name, is_write, p, orig_prio, new_prio)
-);
-
-TRACE_EVENT(f2fs_fault_report,
-
-	TP_PROTO(struct super_block *sb, unsigned int err_code,
-		const char *func, unsigned int data),
-
-	TP_ARGS(sb, err_code, func, data),
-
-	TP_STRUCT__entry(
-		__field(dev_t, dev)
-		__field(unsigned int, err_code)
-		__string(func, func)
-		__field(unsigned int, data)
-	),
-
-	TP_fast_assign(
-		__entry->dev		= sb->s_dev;
-		__entry->err_code	= err_code;
-		__assign_str(func, func);
-		__entry->data		= data;
-	),
-
-	TP_printk("dev = (%d,%d), err_code = %u, func = %s, data = %u",
-		show_dev(__entry->dev),
-		__entry->err_code,
-		__get_str(func),
-		__entry->data)
 );
 
 #endif /* _TRACE_F2FS_H */

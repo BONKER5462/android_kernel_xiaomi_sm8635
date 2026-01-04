@@ -145,13 +145,6 @@ typedef u32 nid_t;
 
 enum f2fs_lock_name {
 	LOCK_NAME_NONE,
-	LOCK_NAME_CP_RWSEM,
-	LOCK_NAME_NODE_CHANGE,
-	LOCK_NAME_NODE_WRITE,
-	LOCK_NAME_GC_LOCK,
-	LOCK_NAME_CP_GLOBAL,
-	LOCK_NAME_IO_RWSEM,
-	LOCK_NAME_MAX,
 };
 
 /*
@@ -1346,6 +1339,24 @@ struct f2fs_gc_control {
 	struct f2fs_lock_context lc;	/* lock context for gc_lock */
 };
 
+struct f2fs_time_stat {
+	unsigned long long total_time;		/* total wall clock time */
+#ifdef CONFIG_64BIT
+	unsigned long long running_time;	/* running time */
+#endif
+#if defined(CONFIG_SCHED_INFO) && defined(CONFIG_SCHEDSTATS)
+	unsigned long long runnable_time;	/* runnable(including preempted) time */
+#endif
+#ifdef CONFIG_TASK_DELAY_ACCT
+	unsigned long long io_sleep_time;	/* IO sleep time */
+#endif
+};
+
+struct f2fs_lock_context {
+	struct f2fs_time_stat ts;
+	bool lock_trace;
+};
+
 /*
  * For s_flag in struct f2fs_sb_info
  * Modification on enum should be synchronized with s_flag array
@@ -1445,9 +1456,6 @@ enum {
 
 /* a threshold of maximum elapsed time in critical region to print tracepoint */
 #define MAX_LOCK_ELAPSED_TIME		500
-
-#define F2FS_DEFAULT_TASK_PRIORITY		(DEFAULT_PRIO)
-#define F2FS_CRITICAL_TASK_PRIORITY		NICE_TO_PRIO(0)
 
 static inline int f2fs_test_bit(unsigned int nr, char *addr);
 static inline void f2fs_set_bit(unsigned int nr, char *addr);
@@ -2253,6 +2261,33 @@ void f2fs_down_write_trace(struct f2fs_rwsem *sem,
 int f2fs_down_write_trylock_trace(struct f2fs_rwsem *sem,
 						struct f2fs_lock_context *lc);
 void f2fs_up_write_trace(struct f2fs_rwsem *sem, struct f2fs_lock_context *lc);
+
+static inline void f2fs_lock_op(struct f2fs_sb_info *sbi)
+{
+	f2fs_down_read(&sbi->cp_rwsem);
+}
+
+static inline int f2fs_trylock_op(struct f2fs_sb_info *sbi)
+{
+	if (time_to_inject(sbi, FAULT_LOCK_OP))
+		return 0;
+	return f2fs_down_read_trylock(&sbi->cp_rwsem);
+}
+
+static inline void f2fs_unlock_op(struct f2fs_sb_info *sbi)
+{
+	f2fs_up_read(&sbi->cp_rwsem);
+}
+
+static inline void f2fs_lock_all(struct f2fs_sb_info *sbi)
+{
+	f2fs_down_write(&sbi->cp_rwsem);
+}
+
+static inline void f2fs_unlock_all(struct f2fs_sb_info *sbi)
+{
+	f2fs_up_write(&sbi->cp_rwsem);
+}
 
 static inline int __get_cp_reason(struct f2fs_sb_info *sbi)
 {
