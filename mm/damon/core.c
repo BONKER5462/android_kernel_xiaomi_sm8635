@@ -914,7 +914,46 @@ static void kdamond_apply_schemes(struct damon_ctx *c)
 		if (!s->wmarks.activated)
 			continue;
 
-		damos_adjust_quota(c, s);
+		if (!quota->ms && !quota->sz)
+			continue;
+
+		/* New charge window starts */
+		if (!time_in_range_open(jiffies, quota->charged_from,
+					quota->charged_from +
+					msecs_to_jiffies(
+						quota->reset_interval))) {
+			if (quota->esz && quota->charged_sz >= quota->esz)
+				s->stat.qt_exceeds++;
+			quota->total_charged_sz += quota->charged_sz;
+			quota->charged_from = jiffies;
+			quota->charged_sz = 0;
+			damos_set_effective_quota(quota);
+		}
+
+		if (!c->ops.get_scheme_score)
+			continue;
+
+		/* Fill up the score histogram */
+		memset(quota->histogram, 0, sizeof(quota->histogram));
+		damon_for_each_target(t, c) {
+			damon_for_each_region(r, t) {
+				if (!__damos_valid_target(r, s))
+					continue;
+				score = c->ops.get_scheme_score(
+						c, t, r, s);
+				quota->histogram[score] += damon_sz_region(r);
+				if (score > max_score)
+					max_score = score;
+			}
+		}
+
+		/* Set the min score limit */
+		for (cumulated_sz = 0, score = max_score; ; score--) {
+			cumulated_sz += quota->histogram[score];
+			if (cumulated_sz >= quota->esz || !score)
+				break;
+		}
+		quota->min_score = score;
 	}
 
 	damon_for_each_target(t, c) {
