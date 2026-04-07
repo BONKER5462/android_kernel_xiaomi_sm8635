@@ -662,7 +662,7 @@ int copy_dmabuf_info(u64 clone_flags, struct task_struct *task)
 	 * made it into the child's files_struct and mm_struct.
 	 */
 	put_dmabuf_info(parent_dmabuf_info);
-	child_dmabuf_info = dup_dma_buf_info(parent_dmabuf_info);
+	child_dmabuf_info = compute_dmabuf_info(task);
 	if (!child_dmabuf_info)
 		return -ENOMEM;
 
@@ -703,17 +703,6 @@ void put_dmabuf_info(struct task_dma_buf_info *dmabuf_info)
 
 	kfree(dmabuf_info);
 }
-
-#define COUNT_DMABUF_FDS(file_lookup_func) ({ \
-	size_t count = 0; \
-	unsigned int max_fds = files_fdtable(current->files)->max_fds; \
-	for (unsigned int n = 0; n < max_fds; ++n) { \
-		struct file *file = file_lookup_func(current->files, n); \
-		if (file && is_dma_buf_file(file)) \
-			++count; \
-	} \
-	count; \
-})
 
 /*
  * begin_new_exec is the starting point for the execution of a new program. It involves unsharing
