@@ -649,7 +649,7 @@ int copy_dmabuf_info(u64 clone_flags, struct task_struct *task)
 	 * the parent, so they can both share the same dmabuf_info.
 	 */
 	if (share_vm && share_fs) {
-		get_dmabuf_info(parent_dmabuf_info);
+		/* task takes the parent_dmabuf_info with the elevated refcount. */
 		task->dmabuf_info = parent_dmabuf_info;
 		return 0;
 	}
@@ -662,7 +662,11 @@ int copy_dmabuf_info(u64 clone_flags, struct task_struct *task)
 	 * made it into the child's files_struct and mm_struct.
 	 */
 	put_dmabuf_info(parent_dmabuf_info);
+<<<<<<< HEAD
 	child_dmabuf_info = compute_dmabuf_info(task);
+=======
+	child_dmabuf_info = dup_dma_buf_info(parent_dmabuf_info);
+>>>>>>> c105da064613 (ANDROID: read task_dma_buf_info under task lock and pin it)
 	if (!child_dmabuf_info)
 		return -ENOMEM;
 
