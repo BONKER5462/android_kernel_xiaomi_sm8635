@@ -410,6 +410,60 @@ DECLARE_HOOK(android_vh_pcp_alloc_factor_adjust,
 DECLARE_RESTRICTED_HOOK(android_rvh_read_swap_cache_async_timeout,
 	TP_PROTO(size_t *count, bool *skip),
 	TP_ARGS(count, skip), 2);
+<<<<<<< HEAD
+=======
+DECLARE_HOOK(android_vh_folio_add_lru_folio_activate,
+	TP_PROTO(struct folio *folio, bool *bypass),
+	TP_ARGS(folio, bypass));
+DECLARE_HOOK(android_vh_add_file_rmap,
+	TP_PROTO(struct page *page, bool compound),
+	TP_ARGS(page, compound));
+DECLARE_HOOK(android_vh_remove_file_rmap,
+	TP_PROTO(struct page *page, bool compound),
+	TP_ARGS(page, compound));
+DECLARE_HOOK(android_vh_folio_end_writeback,
+	TP_PROTO(struct folio *folio),
+	TP_ARGS(folio));
+DECLARE_HOOK(android_vh_folio_start_writeback,
+	TP_PROTO(struct folio *folio),
+	TP_ARGS(folio));
+DECLARE_HOOK(android_vh_cma_alloc_bypass,
+	TP_PROTO(struct cma *cma, unsigned long count, unsigned int align,
+		gfp_t gfp_mask, struct page **page, bool *bypass),
+	TP_ARGS(cma, count, align, gfp_mask, page, bypass));
+DECLARE_HOOK(android_vh_migration_entry_wait_enter,
+	TP_PROTO(swp_entry_t entry, u64 *time, int *zonenum),
+	TP_ARGS(entry, time, zonenum));
+DECLARE_HOOK(android_vh_migration_entry_wait_exit,
+	TP_PROTO(u64 time, int zonenum),
+	TP_ARGS(time, zonenum));
+DECLARE_HOOK(android_vh_migrate_pages_batch_break,
+	TP_PROTO(struct folio *folio, struct list_head *head,
+	int reason, bool *should_break, int *nr_left),
+	TP_ARGS(folio, head, reason, should_break, nr_left));
+DECLARE_HOOK(android_vh_migrate_batch_nr_pages,
+	TP_PROTO(struct list_head *head, int *nr_pages),
+	TP_ARGS(head, nr_pages));
+DECLARE_HOOK(android_vh_folio_alloc_swap_bypass,
+	TP_PROTO(swp_entry_t *entry, struct folio *folio, bool *bypass),
+	TP_ARGS(entry, folio, bypass));
+DECLARE_HOOK(android_vh_pick_swap_device_bypass,
+	TP_PROTO(swp_entry_t *entry, struct swap_info_struct *si, bool *bypass),
+	TP_ARGS(entry, si, bypass));
+DECLARE_HOOK(android_vh_check_swap_range_free,
+	TP_PROTO(struct swap_info_struct *si, unsigned long offset,\
+		 unsigned int nr_pages),
+	TP_ARGS(si, offset, nr_pages));
+DECLARE_HOOK(android_vh_free_swap_slot_bypass,
+	TP_PROTO(swp_entry_t *entry, bool *bypass),
+	TP_ARGS(entry, bypass));
+DECLARE_HOOK(android_vh_swap_device_swapon,
+	TP_PROTO(struct swap_info_struct *si),
+	TP_ARGS(si));
+DECLARE_HOOK(android_vh_swap_device_swapoff,
+	TP_PROTO(struct swap_info_struct *si),
+	TP_ARGS(si));
+>>>>>>> 6d2f43b7269a (ANDROID: vendor hooks: add hooks to support the functionality and management of multiple swap devices.)
 #endif /* _TRACE_HOOK_MM_H */
 
 /* This part must be outside protection */
