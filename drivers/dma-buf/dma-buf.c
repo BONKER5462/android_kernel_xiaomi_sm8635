@@ -649,7 +649,7 @@ int copy_dmabuf_info(u64 clone_flags, struct task_struct *task)
 	 * the parent, so they can both share the same dmabuf_info.
 	 */
 	if (share_vm && share_fs) {
-		/* task takes the parent_dmabuf_info with the elevated refcount. */
+		get_dmabuf_info(parent_dmabuf_info);
 		task->dmabuf_info = parent_dmabuf_info;
 		return 0;
 	}
