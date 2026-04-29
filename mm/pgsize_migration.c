@@ -159,8 +159,8 @@ void vma_set_pad_pages(struct vm_area_struct *vma,
 static unsigned long __vma_pad_pages(struct vm_area_struct *vma,
 				     struct vm_area_struct *new)
 {
-	int nr_pages;
-	int nr_pad;
+	unsigned long nr_pages;
+	unsigned long nr_pad;
 
 	if (!is_pgsize_migration_enabled())
 		return 0;
@@ -170,6 +170,8 @@ static unsigned long __vma_pad_pages(struct vm_area_struct *vma,
 		return 0;
 
 	nr_pages = vma_pages(vma);
+	if (new)
+		nr_pages += vma_pages(new);
 
 	/*
 	 * The number of padding pages should not exceed the total number of pages in
@@ -181,6 +183,11 @@ static unsigned long __vma_pad_pages(struct vm_area_struct *vma,
 		return 0;
 
 	return nr_pad;
+}
+
+unsigned long vma_pad_pages(struct vm_area_struct *vma)
+{
+	return __vma_pad_pages(vma, NULL);
 }
 
 static __always_inline bool str_has_suffix(const char *str, const char *suffix)
