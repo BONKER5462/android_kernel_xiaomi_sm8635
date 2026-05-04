@@ -235,24 +235,18 @@ static int announce_servers(struct sockaddr_qrtr *sq)
 	struct qrtr_server *srv;
 	struct qrtr_node *node;
 	unsigned long index;
-	unsigned long node_idx;
 	int ret;
 
-	/* Announce the list of servers registered in this node */
-	xa_for_each(&nodes, node_idx, node) {
-		if (node->id == sq->sq_node) {
-			pr_info("Avoiding duplicate announce for NODE ID %u\n", node->id);
-			continue;
-		}
-		xa_for_each(&node->servers, index, srv) {
-			ret = service_announce_new(sq, srv);
-			if (ret < 0) {
-				if (ret == -ENODEV)
-					continue;
+	node = node_get(qrtr_ns.local_node);
+	if (!node)
+		return 0;
 
-				pr_err("failed to announce new service %d\n", ret);
-				return ret;
-			}
+	/* Announce the list of servers registered in this node */
+	xa_for_each(&node->servers, index, srv) {
+		ret = service_announce_new(sq, srv);
+		if (ret < 0) {
+			pr_err("failed to announce new service\n");
+			return ret;
 		}
 	}
 	return 0;
@@ -416,12 +410,11 @@ static int ctrl_cmd_bye(struct sockaddr_qrtr *from)
 		msg.msg_namelen = sizeof(sq);
 
 		ret = kernel_sendmsg(qrtr_ns.sock, &msg, &iv, 1, sizeof(pkt));
-		if (ret < 0 && ret != -ENODEV)
-			pr_err_ratelimited("send bye failed: [0x%x:0x%x] 0x%x ret: %d\n",
-					   srv->service, srv->instance,
-					   srv->port, ret);
+		if (ret < 0) {
+			pr_err("failed to send bye cmd\n");
+			return ret;
+		}
 	}
-
 	return 0;
 }
 
@@ -488,12 +481,11 @@ static int ctrl_cmd_del_client(struct sockaddr_qrtr *from,
 		msg.msg_namelen = sizeof(sq);
 
 		ret = kernel_sendmsg(qrtr_ns.sock, &msg, &iv, 1, sizeof(pkt));
-		if (ret < 0 && ret != -ENODEV)
-			pr_err_ratelimited("del client cmd failed: [0x%x:0x%x] 0x%x %d\n",
-					   srv->service, srv->instance,
-					   srv->port, ret);
+		if (ret < 0) {
+			pr_err("failed to send del client cmd\n");
+			return ret;
+		}
 	}
-
 	return 0;
 }
 
