@@ -72,4 +72,4 @@ obj-$(CONFIG_QCOM_SMCI_PROXY) 	+= smci_proxy.o
 obj-$(CONFIG_BOOTMARKER_PROXY) 	+= bootmarker_proxy.o
 obj-$(CONFIG_KINECTICS_XR_NORDIC) += kxrctrl/
 obj-$(CONFIG_VD628x)      += vd628x/
-obj-$(CONFIG_MI_HARDWARE_ID) 	+= hwid/
+obj-$(CONFIG_USBMUX_PS8822)     += usbmux_ps8822.o
