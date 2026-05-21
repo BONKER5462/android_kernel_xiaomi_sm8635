@@ -1166,11 +1166,14 @@ void cgroup_writeback_umount(void)
 
 	if (atomic_read(&isw_nr_in_flight)) {
 		/*
-		 * Use rcu_barrier() to wait for all pending callbacks to
-		 * ensure that all in-flight wb switches are in the workqueue.
+		 * Paired with rcu_read_lock() in inode_switch_wbs() and
+		 * cleanup_offline_cgwb().  synchronize_rcu() waits for any
+		 * in-flight switcher that already passed the SB_ACTIVE check
+		 * to finish queueing its work, so flush_workqueue() below
+		 * will then drain it.
 		 */
-		rcu_barrier();
-		flush_workqueue(isw_wq);
+		synchronize_rcu();
+w		flush_workqueue(isw_wq);
 	}
 }
 
