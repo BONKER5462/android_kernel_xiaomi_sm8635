@@ -2031,6 +2031,7 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct qcom_slim_ngd_ctrl *ctrl;
+	int irq;
 	int ret;
 	struct pdr_service *pds;
 
@@ -2044,89 +2045,15 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 	if (IS_ERR(ctrl->base))
 		return PTR_ERR(ctrl->base);
 
-	ret = platform_get_irq(pdev, 0);
-	if (ret < 0)
-		return ret;
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return irq;
 
-	ctrl->irq = ret;
-	ret = devm_request_irq(dev, ctrl->irq, qcom_slim_ngd_interrupt,
-			       IRQF_TRIGGER_HIGH, "slim-ngd", ctrl);
+	ret = devm_request_irq(dev, irq, qcom_slim_ngd_interrupt,
+			       IRQF_TRIGGER_HIGH | IRQF_NO_AUTOEN,
+			       "slim-ngd", ctrl);
 	if (ret)
 		return dev_err_probe(&pdev->dev, ret, "request IRQ failed\n");
-
-	ctrl->irq_disabled = false;
-
-	ctrl->r_mem.is_r_mem = false;
-	remote_res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-				"slimbus_remote_mem");
-
-	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
-	if (ret) {
-		dev_err(&pdev->dev, "could not set 32 bit mask\n");
-		return -ENODEV;
-	}
-
-	if (remote_res) {
-		ctrl->r_mem.is_r_mem = true;
-		ctrl->r_mem.r_pbase = (unsigned long long)remote_res->start;
-		ctrl->r_mem.r_vbase = devm_ioremap(&pdev->dev,
-				remote_res->start, resource_size(remote_res));
-		if (!ctrl->r_mem.r_vbase) {
-			dev_err(&pdev->dev, "Remote mem ioremap failed\n");
-			return -ENOMEM;
-		}
-
-		ctrl->r_mem.r_vsbase = ctrl->r_mem.r_vbase;
-		ctrl->r_mem.r_res = remote_res;
-	} else {
-		dev_err(&pdev->dev, "no Remote mem\n");
-	}
-
-	ctrl->wait_for_adsp_up = of_property_read_bool(pdev->dev.of_node,
-					"qcom,wait_for_adsp_up");
-
-	/* Create IPC log context */
-	ctrl->ipc_slimbus_log = ipc_log_context_create(IPC_SLIMBUS_LOG_PAGES,
-						dev_name(&pdev->dev), 0);
-	if (!ctrl->ipc_slimbus_log) {
-		dev_err(&pdev->dev, "error creating ipc_logging context\n");
-	} else {
-		/* Initialize the log mask */
-		ctrl->ipc_log_mask = INFO_LEV;
-		ctrl->default_ipc_log_mask = INFO_LEV;
-		SLIM_INFO(ctrl, "start logging for slim dev %s\n",
-				dev_name(&pdev->dev));
-	}
-
-	/* Create Error IPC log context */
-	memset(ipc_err_log_name, 0, sizeof(ipc_err_log_name));
-	scnprintf(ipc_err_log_name, sizeof(ipc_err_log_name), "%s%s",
-						dev_name(&pdev->dev), "_err");
-	ctrl->ipc_slimbus_log_err =
-		ipc_log_context_create(IPC_SLIMBUS_LOG_PAGES,
-						ipc_err_log_name, 0);
-	if (!ctrl->ipc_slimbus_log_err)
-		dev_err(&pdev->dev,
-			"error creating ipc_error_logging context\n");
-	else
-		SLIM_INFO(ctrl, "start error logging for slim dev %s\n",
-				ipc_err_log_name);
-
-	ret = sysfs_create_file(&pdev->dev.kobj, &dev_attr_debug_mask.attr);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to create sysfs ret:%d\n", ret);
-		ctrl->sysfs_created = false;
-	} else {
-		ctrl->sysfs_created = true;
-	}
-
-	ctrl->nb.notifier_call = qcom_slim_ngd_ssr_notify;
-	ctrl->notifier = qcom_register_ssr_notifier("lpass", &ctrl->nb);
-	if (IS_ERR(ctrl->notifier)) {
-		ret = PTR_ERR(ctrl->notifier);
-		dev_err(dev, "Failed to register SSR notification: %d\n", ret);
-		goto remove_ipc_sysfs;
-	}
 
 	ctrl->dev = dev;
 	ctrl->framer.rootfreq = SLIM_ROOT_FREQ >> 3;
@@ -2157,24 +2084,34 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 	init_completion(&ctrl->tx_sent);
 
 	ctrl->pdr = pdr_handle_alloc(slim_pd_status, ctrl);
-	if (IS_ERR(ctrl->pdr)) {
-		ret = dev_err_probe(dev, PTR_ERR(ctrl->pdr),
-				    "Failed to init PDR handle\n");
-		goto err_unregister_ssr;
-	}
+	if (IS_ERR(ctrl->pdr))
+		return dev_err_probe(dev, PTR_ERR(ctrl->pdr), "Failed to init PDR handle\n");
+
+	ret = of_qcom_slim_ngd_register(dev, ctrl);
+	if (ret)
+		goto err_pdr_release;
 
 	pds = pdr_add_lookup(ctrl->pdr, "avs/audio", "msm/adsp/audio_pd");
 	if (IS_ERR(pds) && PTR_ERR(pds) != -EALREADY) {
 		ret = dev_err_probe(dev, PTR_ERR(pds), "pdr add lookup failed\n");
-		goto err_pdr_release;
+		goto err_unregister_ngd;
 	}
 
-	return of_qcom_slim_ngd_register(dev, ctrl);
+	ctrl->nb.notifier_call = qcom_slim_ngd_ssr_notify;
+	ctrl->notifier = qcom_register_ssr_notifier("lpass", &ctrl->nb);
+	if (IS_ERR(ctrl->notifier)) {
+		ret = PTR_ERR(ctrl->notifier);
+		goto err_unregister_ngd;
+	}
 
+	enable_irq(irq);
+
+	return 0;
+
+err_unregister_ngd:
+	qcom_slim_ngd_unregister(ctrl);
 err_pdr_release:
 	pdr_handle_release(ctrl->pdr);
-err_unregister_ssr:
-	qcom_unregister_ssr_notifier(ctrl->notifier, &ctrl->nb);
 
 	return ret;
 }
