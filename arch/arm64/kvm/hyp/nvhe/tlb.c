@@ -150,7 +150,7 @@ void __kvm_tlb_flush_vmid_ipa(struct kvm_s2_mmu *mmu,
 	__tlbi_sync_s1ish_hyp();
 	isb();
 
-	exit_vmid_context(&cxt);
+	__tlb_switch_to_host(&cxt);
 }
 
 void __kvm_tlb_flush_vmid(struct kvm_s2_mmu *mmu)
@@ -188,5 +188,5 @@ void __kvm_flush_vm_context(void)
 {
 	dsb(ishst);
 	__tlbi(alle1is);
-	__tlbi_sync_s1ish_hyp();
+	dsb(ish);
 }
