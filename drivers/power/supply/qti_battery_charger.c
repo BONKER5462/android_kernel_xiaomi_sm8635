@@ -10884,11 +10884,6 @@ static int battery_chg_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK( &bcdev->batt_update_work, xm_batt_update_work);
 	INIT_DELAYED_WORK( &bcdev->glink_crash_num_work, xm_glink_crash_num_work);
 
-#if defined(CONFIG_OF) && defined(CONFIG_DRM_PANEL)
-	INIT_DELAYED_WORK(&bcdev->panel_notify_register_work, battery_register_panel_notifier_work);
-#endif
-	bcdev->dev = dev;
-
 	client_data.id = MSG_OWNER_BC;
 	client_data.name = "battery_charger";
 	client_data.msg_cb = battery_chg_callback;
@@ -11004,6 +10999,19 @@ static int battery_chg_probe(struct platform_device *pdev)
 	rc = get_charge_control_en(bcdev);
 	if (rc < 0)
 		pr_debug("Failed to read charge_control_en, rc = %d\n", rc);
+
+	/*
+	 * Register panel notifier last, only after bcdev is fully
+	 * initialized. This ensures panel callbacks cannot race against
+	 * a partially-initialized or failed bcdev.
+	 */
+	rc = battery_chg_register_panel_notifier(bcdev);
+	if (rc < 0) {
+		device_init_wakeup(bcdev->dev, false);
+		debugfs_remove_recursive(bcdev->debugfs_dir);
+		class_unregister(&bcdev->battery_class);
+		goto error;
+	}
 
 	return 0;
 error:
