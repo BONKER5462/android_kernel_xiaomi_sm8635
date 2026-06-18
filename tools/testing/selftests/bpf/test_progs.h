@@ -376,14 +376,20 @@ int test__join_cgroup(const char *path);
 	___ok;								\
 })
 
-#define ASSERT_OK_FD(fd, name) ({					\
-	static int duration = 0;					\
-	int ___fd = (fd);						\
-	bool ___ok = ___fd >= 0;					\
-	CHECK(!___ok, (name), "unexpected fd: %d (errno %d)\n",		\
-	      ___fd, errno);						\
-	___ok;								\
-})
+#define SYS(goto_label, fmt, ...)					\
+	({								\
+		char cmd[1024];						\
+		snprintf(cmd, sizeof(cmd), fmt, ##__VA_ARGS__);		\
+		if (!ASSERT_OK(system(cmd), cmd))			\
+			goto goto_label;				\
+	})
+
+#define SYS_NOFAIL(fmt, ...)						\
+	({								\
+		char cmd[1024];						\
+		snprintf(cmd, sizeof(cmd), fmt, ##__VA_ARGS__);		\
+		system(cmd);						\
+	})
 
 static inline __u64 ptr_to_u64(const void *ptr)
 {
