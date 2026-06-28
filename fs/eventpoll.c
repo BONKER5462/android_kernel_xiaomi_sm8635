@@ -717,6 +717,9 @@ static void ep_free(struct eventpoll *ep)
 	kfree_rcu(ep, rcu);
 }
 
+static void __ep_remove_file(struct eventpoll *ep, struct epitem *epi, struct file *file);
+static bool __ep_remove_epi(struct eventpoll *ep, struct epitem *epi);
+
 /*
  * The ffd.file pointer may be in the process of being torn down due to
  * being closed, but we may not have finished eventpoll_release() yet.
@@ -737,7 +740,7 @@ static void ep_free(struct eventpoll *ep)
  */
 static struct file *epi_fget(const struct epitem *epi)
 {
-	struct file *file;
+	struct file *file = epi->ffd.file;
 
 	file = epi->ffd.file;
 	if (!atomic_long_inc_not_zero(&file->f_count))
@@ -758,8 +761,21 @@ static void ep_remove_file(struct eventpoll *ep, struct epitem *epi,
 	lockdep_assert_held(&ep->mtx);
 	lockdep_assert_held(&file->f_lock);
 
-	to_free = NULL;
-	head = file->f_ep;
+	__ep_remove_file(ep, epi, file);
+	return __ep_remove_epi(ep, epi);
+}
+
+/*
+ * Called with &file->f_lock held,
+ * returns with it released
+ */
+static void __ep_remove_file(struct eventpoll *ep, struct epitem *epi, struct file *file)
+{
+	struct epitems_head *to_free = NULL;
+	struct hlist_head *head = file->f_ep;
+
+	lockdep_assert_held(&ep->mtx);
+
 	if (hlist_is_singular_node(&epi->fllink, head)) {
 		/* See eventpoll_release() for details. */
 		WRITE_ONCE(file->f_ep, NULL);
@@ -775,7 +791,7 @@ static void ep_remove_file(struct eventpoll *ep, struct epitem *epi,
 	free_ephead(to_free);
 }
 
-static bool ep_remove_epi(struct eventpoll *ep, struct epitem *epi)
+static bool __ep_remove_epi(struct eventpoll *ep, struct epitem *epi)
 {
 	lockdep_assert_held(&ep->mtx);
 
