@@ -758,6 +758,8 @@ static void ep_remove_file(struct eventpoll *ep, struct epitem *epi,
 	lockdep_assert_held(&ep->mtx);
 	lockdep_assert_held(&file->f_lock);
 
+	to_free = NULL;
+	head = file->f_ep;
 	if (hlist_is_singular_node(&epi->fllink, head)) {
 		/* See eventpoll_release() for details. */
 		WRITE_ONCE(file->f_ep, NULL);
