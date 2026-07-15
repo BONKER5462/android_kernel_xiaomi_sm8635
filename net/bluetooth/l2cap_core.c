@@ -39,7 +39,6 @@
 #include <net/bluetooth/l2cap.h>
 
 #include "smp.h"
-#include "a2mp_compat.h"
 
 #define LE_FLOWCTL_MAX_CREDITS 65535
 
@@ -643,7 +642,7 @@ void l2cap_chan_del(struct l2cap_chan *chan, int err)
 
 	chan->ops->teardown(chan, err);
 
-	if (!test_and_set_bit(FLAG_DEL, &chan->flags)) {
+	if (conn) {
 		/* Delete from channel list */
 		list_del(&chan->list);
 
@@ -655,7 +654,7 @@ void l2cap_chan_del(struct l2cap_chan *chan, int err)
 		 */
 		if (chan->chan_type != L2CAP_CHAN_FIXED ||
 		    test_bit(FLAG_HOLD_HCI_CONN, &chan->flags))
-			hci_conn_drop(chan->conn->hcon);
+			hci_conn_drop(conn->hcon);
 	}
 
 	if (test_bit(CONF_NOT_COMPLETE, &chan->conf_state))
