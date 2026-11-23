@@ -41,7 +41,7 @@ EXPORT_SYMBOL_GPL(KP_MODE_CHANGE);
 static unsigned int kp_override_mode;
 static bool kp_override;
 
-static bool auto_kp __read_mostly = 0
+static bool auto_kp __read_mostly = 0;
 module_param(auto_kp, bool, 0664);
 MODULE_PARM_DESC(auto_kp, "Enable/disable automatic kernel profile management");
 
